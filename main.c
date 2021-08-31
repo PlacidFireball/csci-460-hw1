@@ -8,6 +8,12 @@
  * pretty self-explanatory.
  * */
 
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define NUM_PAGES 16
+
 typedef struct {
     long job_page_number;
     long page_num_mem;
@@ -28,6 +34,24 @@ void repl(); // read, execute print loop
 
 int main(int argc, char* argv[]) {
 
+    repl();
     return 0;
 }
 
+void repl() {
+
+    char *read_str = (char*)NULL; // collect user input
+    char* arg; // tokenizing the read string
+    char** end = (char**)NULL; // strol() stuff
+    long job_number, mem_requested; // we'll collect
+    scanf("%s", read_str);
+    arg = strtok(read_str, " ");
+    while (!strcmp(arg, "exit")) {
+        job_number = strtol(arg, end, 10);
+        if (job_number < NUM_PAGES) {
+            arg = strtok(read_str, NULL);
+
+        }
+    }
+
+}

@@ -19,7 +19,7 @@
 #define BUSY_PAGE 0
 
 typedef struct {
-    long* job_page_number;
+    //long* job_page_number; // unnecessary
     long* page_num_mem;
 } pmt;
 
@@ -39,7 +39,8 @@ typedef struct {
 
 
 void create_job(job* in, long number, long size);
-void handle_pmt(job* job);
+void handle_pmt_insert(job* job);
+void handle_pmt_delete(job* job);
 pmt init_pmt(long page_req);
 void free_pmt(pmt* free_pmt);
 void repl(); // read, execute print loop
@@ -68,6 +69,7 @@ void repl() {
 
     job jobs[100]; // jobs array
 
+    char* read_str = malloc(sizeof(char)*99);
     char* arg0 = malloc(sizeof(char)*ARG_LEN);
     char* arg1 = malloc(sizeof(char)*ARG_LEN);
 
@@ -75,8 +77,8 @@ void repl() {
     long job_number, mem_requested;
 
     printf("%s", prompt);
-    //fgets(read_str, 99, stdin); // not working for some reason
-    scanf("%10s %10s", arg0, arg1);
+    fgets(read_str, 99, stdin); // not working for some reason
+    sscanf(read_str, "%10s %10s", arg0, arg1);
     while (strcmp(arg0, "exit") != 0) {
         if (strcmp(arg0, "?") == 0) {        // display help
             printf("%s", help);
@@ -94,13 +96,16 @@ void repl() {
                 // TODO implement job creation / deletion
                 if (mem_requested != 0) {                                     // if mem requested = 0 we are deleting a job
                     create_job(&jobs[job_number], job_number, mem_requested); // so we create one
-                    handle_pmt(&jobs[job_number]);
+                    handle_pmt_insert(&jobs[job_number]);
+                }
+                else {
+                    handle_pmt_delete(&jobs[job_number]);
                 }
             }
         }
         printf("%s", prompt);
-        // fgets(read_str, 99, stdin); // not working for some reason
-        scanf("%10s %10s", arg0, arg1);
+        fgets(read_str, 99, stdin); // not working for some reason
+        sscanf(read_str, "%10s %10s", arg0, arg1);
     }
 
     // Free it all!
@@ -119,22 +124,32 @@ void create_job(job* in, long number, long size) {
     in->pmt_loc = &_pmt;
 }
 
-void handle_pmt(job* job) {
+void handle_pmt_insert(job* job) {
     int available_pages = 0;
     for (int i = 0; i < memory.num_pages; i++) {            // calculate the number of available pages
         if (memory.status_arr[i] == FREE_PAGE) {
             available_pages++;
         }
     }
+
     if (job->page_req < available_pages) {                  // if the job will fit in main memory
-        for (int i = 0; i < memory.num_pages; i++) {        // use first fit to insert the pages into memory
-            int j = 0;
+        int j = 0;
+        for (long i = 0; i < memory.num_pages; i++) {        // use first fit to insert the pages into memory
             if (memory.status_arr[i] == FREE_PAGE) {
+                /* This line is a problem, that or malloc is being a bitch */
                 job->pmt_loc->page_num_mem[j++] = i;        // tell the job where its pages are
                 memory.status_arr[i] = BUSY_PAGE;           // tell the memory that that page is busy
+                if (j == job->page_req) break;
             }
         }
     }
+}
+
+void handle_pmt_delete(job* job) {
+    for (int i = 0; i < job->page_req; i++) {
+        memory.status_arr[job->pmt_loc->page_num_mem[i]] = FREE_PAGE;
+    }
+    //free_pmt(job->pmt_loc); // segmentation fault here
 }
 
 void init_memory() {
@@ -147,15 +162,12 @@ void init_memory() {
 }
 
 pmt init_pmt(long page_req) {
-    pmt* new_pmt;
-    new_pmt->job_page_number = (long*)malloc(sizeof(long)*page_req);
-    for (int i = 0; i < page_req; i++) new_pmt->job_page_number[i] = i;
+    pmt* new_pmt = (pmt*)malloc(sizeof(pmt));
     new_pmt->page_num_mem = (long*)malloc(sizeof(long)*page_req);
     for (int i = 0; i < page_req; i++) new_pmt->page_num_mem[i] = 0;
     return *new_pmt;
 }
 
 void free_pmt(pmt* pmt_ptr) {
-    free(pmt_ptr->page_num_mem);
-    free(pmt_ptr->job_page_number);
+    free(pmt_ptr);
 }

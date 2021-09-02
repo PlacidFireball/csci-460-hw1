@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdlib.h>
 
+#define ARG_LEN 10
+#define PAGE_SIZE 4096
 #define NUM_PAGES 16
 #define FREE_PAGE 1
 #define BUSY_PAGE 0
@@ -31,17 +33,27 @@ typedef struct {
 typedef struct {
     long* page_frame_num;
     int* status_arr;
+    long num_pages;
+    long size;
 } mem_map_table;
 
 
 void create_job(job* in, long number, long size);
-void handle_pmt(job* job, pmt* pmt_in);
+void handle_pmt(job* job);
+pmt init_pmt(long page_req);
+void free_pmt(pmt* free_pmt);
 void repl(); // read, execute print loop
+void init_memory();
+
+mem_map_table memory; // global variable for our main memory
 
 int main(int argc, char* argv[]) {
+    init_memory();
     repl();
     return 0;
 }
+
+// TODO I broke everything :)
 
 void repl() {
     const char* prompt = "\nPager > ";
@@ -54,49 +66,46 @@ void repl() {
                        "\nexit - quit the pager";
     printf("%s", help);
 
-    mem_map_table memory;
-    memory.page_frame_num = (long*)malloc(sizeof(long)*NUM_PAGES);
-    for (int i = 0; i < NUM_PAGES; i++) { memory.page_frame_num[i] = FREE_PAGE; }
-    memory.status_arr = (int*)malloc(sizeof(int)*NUM_PAGES);
-    for (int i = 0; i < NUM_PAGES; i++) { memory.status_arr[i] = FREE_PAGE; }
-
     job jobs[100]; // jobs array
 
-    char* read_str = (char*)malloc(sizeof(char)*100); // collect user input
-    char* arg; // tokenizing the read string
+    char* arg0 = malloc(sizeof(char)*ARG_LEN);
+    char* arg1 = malloc(sizeof(char)*ARG_LEN);
+
     char** end = (char**)NULL; // strol() stuff
     long job_number, mem_requested;
 
     printf("%s", prompt);
-    fgets(read_str, 99, stdin);
-    arg = strtok(read_str, " \n"); // tokenize the string on ' ' and/or '\n'
-    while (strcmp(arg, "exit") != 0) {
-        if (strcmp(arg, "?") == 0) { // display help
+    //fgets(read_str, 99, stdin); // not working for some reason
+    scanf("%10s %10s", arg0, arg1);
+    while (strcmp(arg0, "exit") != 0) {
+        if (strcmp(arg0, "?") == 0) {        // display help
             printf("%s", help);
             printf("%s", prompt);
         }
-        else if (strcmp(arg, "print") == 0) { // print off current memory status
-            // TODO implement print memory status
+        else if (strcmp(arg0, "print") == 0) {                                 // print off current memory status
+            for (int i = 0; i < memory.num_pages; i++) {
+                printf("P%d:\t%s\n", i, memory.status_arr[i] == FREE_PAGE ? "Free" : "Busy");
+            }
         }
         else {
-            job_number = strtol(arg, end, 10); // convert the argument to a long
-            if (job_number < NUM_PAGES) { // so long as the job number is valid
-                arg = strtok(NULL, " \n"); // grab the number of bytes requested from the string
-                mem_requested = strtol(arg, end, 10); // convert it to a long
+            job_number = strtol(arg0, end, 10);                           // convert the argument to a long
+            if (job_number < NUM_PAGES) {                                     // so long as the job number is valid
+                mem_requested = strtol(arg1, end, 10);                   // convert it to a long
                 // TODO implement job creation / deletion
-                if (mem_requested != 0) { // if mem requested = 0 we are deleting a job
+                if (mem_requested != 0) {                                     // if mem requested = 0 we are deleting a job
                     create_job(&jobs[job_number], job_number, mem_requested); // so we create one
+                    handle_pmt(&jobs[job_number]);
                 }
             }
         }
         printf("%s", prompt);
-        fgets(read_str, 99, stdin);
-        arg = strtok(read_str, " \n");
+        // fgets(read_str, 99, stdin); // not working for some reason
+        scanf("%10s %10s", arg0, arg1);
     }
 
     // Free it all!
-    free(read_str);
-    free(arg);
+    free(arg0);
+    free(arg1);
     free(memory.status_arr);
     free(memory.page_frame_num);
 
@@ -106,9 +115,47 @@ void create_job(job* in, long number, long size) {
     in->job_num = number; // set job number and size
     in->size = size;
     in->page_req = size/4096 + 1; // calculate how many pages it will take
-    in->pmt_loc = (pmt*)NULL;
+    pmt _pmt = init_pmt(in->page_req);
+    in->pmt_loc = &_pmt;
 }
 
-void handle_pmt(job* job, pmt* pmt_in) {
+void handle_pmt(job* job) {
+    int available_pages = 0;
+    for (int i = 0; i < memory.num_pages; i++) {            // calculate the number of available pages
+        if (memory.status_arr[i] == FREE_PAGE) {
+            available_pages++;
+        }
+    }
+    if (job->page_req < available_pages) {                  // if the job will fit in main memory
+        for (int i = 0; i < memory.num_pages; i++) {        // use first fit to insert the pages into memory
+            int j = 0;
+            if (memory.status_arr[i] == FREE_PAGE) {
+                job->pmt_loc->page_num_mem[j++] = i;        // tell the job where its pages are
+                memory.status_arr[i] = BUSY_PAGE;           // tell the memory that that page is busy
+            }
+        }
+    }
+}
 
+void init_memory() {
+    memory.page_frame_num = (long*)malloc(sizeof(long)*NUM_PAGES);
+    for (int i = 0; i < NUM_PAGES; i++) { memory.page_frame_num[i] = FREE_PAGE; }
+    memory.status_arr = (int*)malloc(sizeof(int)*NUM_PAGES);
+    for (int i = 0; i < NUM_PAGES; i++) { memory.status_arr[i] = FREE_PAGE; }
+    memory.size = PAGE_SIZE;
+    memory.num_pages = NUM_PAGES;
+}
+
+pmt init_pmt(long page_req) {
+    pmt* new_pmt;
+    new_pmt->job_page_number = (long*)malloc(sizeof(long)*page_req);
+    for (int i = 0; i < page_req; i++) new_pmt->job_page_number[i] = i;
+    new_pmt->page_num_mem = (long*)malloc(sizeof(long)*page_req);
+    for (int i = 0; i < page_req; i++) new_pmt->page_num_mem[i] = 0;
+    return *new_pmt;
+}
+
+void free_pmt(pmt* pmt_ptr) {
+    free(pmt_ptr->page_num_mem);
+    free(pmt_ptr->job_page_number);
 }
